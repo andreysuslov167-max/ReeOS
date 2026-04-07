@@ -22,7 +22,7 @@ fn execute_command(cmd: &str) {
             println!("  exit  - halt the system");
         }
         "clear" => {
-            // Простая очистка - выводим много новых строк
+            
             for _ in 0..25 {
                 println!();
             }
@@ -36,7 +36,7 @@ fn execute_command(cmd: &str) {
                 x86_64::instructions::hlt();
             }
         }
-        "" => {} // Пустая команда - ничего не делаем
+        "" => {} 
         _ => {
             println!("Unknown command: '{}'. Type 'help' for commands.", cmd);
         }
@@ -52,7 +52,7 @@ pub extern "C" fn _start() -> ! {
         print!("> ");
         let input = vga_buffer::read_line_with_echo();
         
-        // Конвертируем массив в строку
+        
         let cmd = match from_utf8(&input) {
             Ok(s) => s.trim_end_matches('\0').trim(),
             Err(_) => "",
