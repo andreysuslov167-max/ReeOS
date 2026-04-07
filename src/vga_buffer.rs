@@ -113,7 +113,7 @@ pub fn wait_for_enter() {
     let mut port = Port::new(0x60);
     loop {
         let scancode: u8 = unsafe { port.read() };
-        if scancode == 0x1C {  // 0x1C = Enter key press
+        if scancode == 0x1C {  
             break;
         }
     }
@@ -148,8 +148,8 @@ pub fn read_line() -> [u8; 256] {
         }
         
         match scancode {
-            0x1C => break, // Enter
-            0x0E => { // Backspace
+            0x1C => break, 
+            0x0E => { 
                 if pos > 0 {
                     pos -= 1;
                 }
@@ -165,7 +165,7 @@ pub fn read_line() -> [u8; 256] {
         }
     }
     
-    // Вывести всё после Enter
+   
     for i in 0..pos {
         WRITER.lock().write_byte(buffer[i]);
     }
@@ -173,7 +173,7 @@ pub fn read_line() -> [u8; 256] {
     
     buffer
 }
-// Добавить эту функцию в vga_buffer.rs
+
 pub fn read_line_with_echo() -> [u8; 256] {
     use x86_64::instructions::port::Port;
     let mut port = Port::new(0x60);
@@ -184,24 +184,24 @@ pub fn read_line_with_echo() -> [u8; 256] {
     loop {
         let scancode: u8 = unsafe { port.read() };
         
-        // Игнорируем отпускание клавиш
+      
         if scancode & 0x80 != 0 {
             last_scancode = 0;
             continue;
         }
         
-        // Игнорируем повторные нажатия той же клавиши
+       
         if scancode == last_scancode {
             continue;
         }
         last_scancode = scancode;
         
         match scancode {
-            0x1C => { // Enter
+            0x1C => { 
                 WRITER.lock().write_byte(b'\n');
                 break;
             }
-            0x0E => { // Backspace
+            0x0E => { 
                 if pos > 0 {
                     pos -= 1;
                     WRITER.lock().write_byte(b'\x08');
