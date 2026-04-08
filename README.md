@@ -13,4 +13,4 @@ ReeOS is a minimal hobby operating system kernel written in Rust. It features VG
 ## Building
 
 ```bash
-cargo build --target x86_64-blog_os.json
+cargo build --targ
