@@ -113,9 +113,54 @@ pub fn wait_for_enter() {
     let mut port = Port::new(0x60);
     loop {
         let scancode: u8 = unsafe { port.read() };
-        if scancode == 0x1C {  
+        if scancode == 0x1C {  // 0x1C = Enter key press
             break;
         }
+    }
+}
+fn scancode_to_ascii_with_shift(scancode: u8, shift: bool) -> Option<char> {
+    match scancode {
+        0x02 => if shift { Some('!') } else { Some('1') },
+        0x03 => if shift { Some('@') } else { Some('2') },
+        0x04 => if shift { Some('#') } else { Some('3') },
+        0x05 => if shift { Some('$') } else { Some('4') },
+        0x06 => if shift { Some('%') } else { Some('5') },
+        0x07 => if shift { Some('^') } else { Some('6') },
+        0x08 => if shift { Some('&') } else { Some('7') },
+        0x09 => if shift { Some('*') } else { Some('8') },
+        0x0A => if shift { Some('(') } else { Some('9') },
+        0x0B => if shift { Some(')') } else { Some('0') },
+        0x0C => if shift { Some('_') } else { Some('-') },
+        0x0D => if shift { Some('+') } else { Some('=') },
+        
+        // Буквы с поддержкой Shift
+        0x10 => if shift { Some('Q') } else { Some('q') },
+        0x11 => if shift { Some('W') } else { Some('w') },
+        0x12 => if shift { Some('E') } else { Some('e') },
+        0x13 => if shift { Some('R') } else { Some('r') },
+        0x14 => if shift { Some('T') } else { Some('t') },
+        0x15 => if shift { Some('Y') } else { Some('y') },
+        0x16 => if shift { Some('U') } else { Some('u') },
+        0x17 => if shift { Some('I') } else { Some('i') },
+        0x18 => if shift { Some('O') } else { Some('o') },
+        0x19 => if shift { Some('P') } else { Some('p') },
+        0x1E => if shift { Some('A') } else { Some('a') },
+        0x1F => if shift { Some('S') } else { Some('s') },
+        0x20 => if shift { Some('D') } else { Some('d') },
+        0x21 => if shift { Some('F') } else { Some('f') },
+        0x22 => if shift { Some('G') } else { Some('g') },
+        0x23 => if shift { Some('H') } else { Some('h') },
+        0x24 => if shift { Some('J') } else { Some('j') },
+        0x25 => if shift { Some('K') } else { Some('k') },
+        0x26 => if shift { Some('L') } else { Some('l') },
+        0x2C => if shift { Some('Z') } else { Some('z') },
+        0x2D => if shift { Some('X') } else { Some('x') },
+        0x2E => if shift { Some('C') } else { Some('c') },
+        0x2F => if shift { Some('V') } else { Some('v') },
+        0x30 => if shift { Some('B') } else { Some('b') },
+        0x31 => if shift { Some('N') } else { Some('n') },
+        0x32 => if shift { Some('M') } else { Some('m') },
+        _ => None,
     }
 }
 fn scancode_to_ascii(scancode: u8) -> Option<char> {
@@ -132,6 +177,9 @@ fn scancode_to_ascii(scancode: u8) -> Option<char> {
         0x25 => Some('k'), 0x26 => Some('l'), 0x2C => Some('z'),
         0x2D => Some('x'), 0x2E => Some('c'), 0x2F => Some('v'),
         0x30 => Some('b'), 0x31 => Some('n'), 0x32 => Some('m'),
+        0x0C => Some('-'), 0x0D => Some('='),
+                
+
         _ => None,
     }
 }
@@ -173,79 +221,119 @@ pub fn read_line() -> [u8; 256] {
     
     buffer
 }
+pub fn clear_keyboard_buffer() {
+    use x86_64::instructions::port::Port;
+    let mut port: Port<u8> = Port::new(0x60);
+    let mut status_port: Port<u8> = Port::new(0x64);
+    
+    // Читаем ВСЕ данные из буфера клавиатуры
+    for _ in 0..100 {
+        let status: u8 = unsafe { status_port.read() };
+        if status & 1 != 0 {
+            unsafe { port.read(); }
+        } else {
+            break;
+        }
+        for _ in 0..1000 {
+            x86_64::instructions::nop();
+        }
+    }
+}
 
 pub fn read_line_with_echo() -> [u8; 256] {
     use x86_64::instructions::port::Port;
-    let mut port = Port::new(0x60);
+    let mut port: Port<u8> = Port::new(0x60);
     let mut buffer = [0u8; 256];
     let mut pos = 0;
-    let mut last_scancode = 0;
+    
+    // Сначала очищаем буфер клавиатуры
+    clear_keyboard_buffer();
     
     loop {
-        let scancode: u8 = unsafe { port.read() };
-        
-      
-        if scancode & 0x80 != 0 {
-            last_scancode = 0;
-            continue;
-        }
-        
-       
-        if scancode == last_scancode {
-            continue;
-        }
-        last_scancode = scancode;
+        // Ждем, пока клавиша не будет нажата
+        let scancode: u8 = loop {
+            let status: u8 = unsafe { Port::new(0x64).read() };
+            if status & 1 != 0 {
+                let code = unsafe { port.read() };
+                // Игнорируем release коды
+                if code & 0x80 == 0 {
+                    break code;
+                }
+            }
+            // Небольшая задержка чтобы не нагружать CPU
+            for _ in 0..1000 {
+                x86_64::instructions::nop();
+            }
+        };
         
         match scancode {
-            0x1C => { 
+            0x1C => { // Enter
                 WRITER.lock().write_byte(b'\n');
                 break;
             }
-            0x0E => { 
+            0x0E => { // Backspace
                 if pos > 0 {
                     pos -= 1;
-                    WRITER.lock().write_byte(b'\x08');
-                    WRITER.lock().write_byte(b' ');
-                    WRITER.lock().write_byte(b'\x08');
+                    let mut writer = WRITER.lock();
+                    // Стираем символ с экрана
+                    writer.write_byte(0x08);
+                    writer.write_byte(b' ');
+                    writer.write_byte(0x08);
                 }
             }
-            0x02 => { if pos < 255 { buffer[pos] = b'1'; WRITER.lock().write_byte(b'1'); pos += 1; } }
-            0x03 => { if pos < 255 { buffer[pos] = b'2'; WRITER.lock().write_byte(b'2'); pos += 1; } }
-            0x04 => { if pos < 255 { buffer[pos] = b'3'; WRITER.lock().write_byte(b'3'); pos += 1; } }
-            0x05 => { if pos < 255 { buffer[pos] = b'4'; WRITER.lock().write_byte(b'4'); pos += 1; } }
-            0x06 => { if pos < 255 { buffer[pos] = b'5'; WRITER.lock().write_byte(b'5'); pos += 1; } }
-            0x07 => { if pos < 255 { buffer[pos] = b'6'; WRITER.lock().write_byte(b'6'); pos += 1; } }
-            0x08 => { if pos < 255 { buffer[pos] = b'7'; WRITER.lock().write_byte(b'7'); pos += 1; } }
-            0x09 => { if pos < 255 { buffer[pos] = b'8'; WRITER.lock().write_byte(b'8'); pos += 1; } }
-            0x0A => { if pos < 255 { buffer[pos] = b'9'; WRITER.lock().write_byte(b'9'); pos += 1; } }
-            0x0B => { if pos < 255 { buffer[pos] = b'0'; WRITER.lock().write_byte(b'0'); pos += 1; } }
-            0x10 => { if pos < 255 { buffer[pos] = b'q'; WRITER.lock().write_byte(b'q'); pos += 1; } }
-            0x11 => { if pos < 255 { buffer[pos] = b'w'; WRITER.lock().write_byte(b'w'); pos += 1; } }
-            0x12 => { if pos < 255 { buffer[pos] = b'e'; WRITER.lock().write_byte(b'e'); pos += 1; } }
-            0x13 => { if pos < 255 { buffer[pos] = b'r'; WRITER.lock().write_byte(b'r'); pos += 1; } }
-            0x14 => { if pos < 255 { buffer[pos] = b't'; WRITER.lock().write_byte(b't'); pos += 1; } }
-            0x15 => { if pos < 255 { buffer[pos] = b'y'; WRITER.lock().write_byte(b'y'); pos += 1; } }
-            0x16 => { if pos < 255 { buffer[pos] = b'u'; WRITER.lock().write_byte(b'u'); pos += 1; } }
-            0x17 => { if pos < 255 { buffer[pos] = b'i'; WRITER.lock().write_byte(b'i'); pos += 1; } }
-            0x18 => { if pos < 255 { buffer[pos] = b'o'; WRITER.lock().write_byte(b'o'); pos += 1; } }
-            0x19 => { if pos < 255 { buffer[pos] = b'p'; WRITER.lock().write_byte(b'p'); pos += 1; } }
-            0x1E => { if pos < 255 { buffer[pos] = b'a'; WRITER.lock().write_byte(b'a'); pos += 1; } }
-            0x1F => { if pos < 255 { buffer[pos] = b's'; WRITER.lock().write_byte(b's'); pos += 1; } }
-            0x20 => { if pos < 255 { buffer[pos] = b'd'; WRITER.lock().write_byte(b'd'); pos += 1; } }
-            0x21 => { if pos < 255 { buffer[pos] = b'f'; WRITER.lock().write_byte(b'f'); pos += 1; } }
-            0x22 => { if pos < 255 { buffer[pos] = b'g'; WRITER.lock().write_byte(b'g'); pos += 1; } }
-            0x23 => { if pos < 255 { buffer[pos] = b'h'; WRITER.lock().write_byte(b'h'); pos += 1; } }
-            0x24 => { if pos < 255 { buffer[pos] = b'j'; WRITER.lock().write_byte(b'j'); pos += 1; } }
-            0x25 => { if pos < 255 { buffer[pos] = b'k'; WRITER.lock().write_byte(b'k'); pos += 1; } }
-            0x26 => { if pos < 255 { buffer[pos] = b'l'; WRITER.lock().write_byte(b'l'); pos += 1; } }
-            0x2C => { if pos < 255 { buffer[pos] = b'z'; WRITER.lock().write_byte(b'z'); pos += 1; } }
-            0x2D => { if pos < 255 { buffer[pos] = b'x'; WRITER.lock().write_byte(b'x'); pos += 1; } }
-            0x2E => { if pos < 255 { buffer[pos] = b'c'; WRITER.lock().write_byte(b'c'); pos += 1; } }
-            0x2F => { if pos < 255 { buffer[pos] = b'v'; WRITER.lock().write_byte(b'v'); pos += 1; } }
-            0x30 => { if pos < 255 { buffer[pos] = b'b'; WRITER.lock().write_byte(b'b'); pos += 1; } }
-            0x31 => { if pos < 255 { buffer[pos] = b'n'; WRITER.lock().write_byte(b'n'); pos += 1; } }
-            0x32 => { if pos < 255 { buffer[pos] = b'm'; WRITER.lock().write_byte(b'm'); pos += 1; } }
+            0x39 => { // Space
+                if pos < 255 {
+                    buffer[pos] = b' ';
+                    WRITER.lock().write_byte(b' ');
+                    pos += 1;
+                }
+            }
+            // Цифры
+            0x02 => if pos < 255 { buffer[pos] = b'1'; WRITER.lock().write_byte(b'1'); pos += 1; }
+            0x03 => if pos < 255 { buffer[pos] = b'2'; WRITER.lock().write_byte(b'2'); pos += 1; }
+            0x04 => if pos < 255 { buffer[pos] = b'3'; WRITER.lock().write_byte(b'3'); pos += 1; }
+            0x05 => if pos < 255 { buffer[pos] = b'4'; WRITER.lock().write_byte(b'4'); pos += 1; }
+            0x06 => if pos < 255 { buffer[pos] = b'5'; WRITER.lock().write_byte(b'5'); pos += 1; }
+            0x07 => if pos < 255 { buffer[pos] = b'6'; WRITER.lock().write_byte(b'6'); pos += 1; }
+            0x08 => if pos < 255 { buffer[pos] = b'7'; WRITER.lock().write_byte(b'7'); pos += 1; }
+            0x09 => if pos < 255 { buffer[pos] = b'8'; WRITER.lock().write_byte(b'8'); pos += 1; }
+            0x0A => if pos < 255 { buffer[pos] = b'9'; WRITER.lock().write_byte(b'9'); pos += 1; }
+            0x0B => if pos < 255 { buffer[pos] = b'0'; WRITER.lock().write_byte(b'0'); pos += 1; }
+            // Буквы
+            0x10 => if pos < 255 { buffer[pos] = b'q'; WRITER.lock().write_byte(b'q'); pos += 1; }
+            0x11 => if pos < 255 { buffer[pos] = b'w'; WRITER.lock().write_byte(b'w'); pos += 1; }
+            0x12 => if pos < 255 { buffer[pos] = b'e'; WRITER.lock().write_byte(b'e'); pos += 1; }
+            0x13 => if pos < 255 { buffer[pos] = b'r'; WRITER.lock().write_byte(b'r'); pos += 1; }
+            0x14 => if pos < 255 { buffer[pos] = b't'; WRITER.lock().write_byte(b't'); pos += 1; }
+            0x15 => if pos < 255 { buffer[pos] = b'y'; WRITER.lock().write_byte(b'y'); pos += 1; }
+            0x16 => if pos < 255 { buffer[pos] = b'u'; WRITER.lock().write_byte(b'u'); pos += 1; }
+            0x17 => if pos < 255 { buffer[pos] = b'i'; WRITER.lock().write_byte(b'i'); pos += 1; }
+            0x18 => if pos < 255 { buffer[pos] = b'o'; WRITER.lock().write_byte(b'o'); pos += 1; }
+            0x19 => if pos < 255 { buffer[pos] = b'p'; WRITER.lock().write_byte(b'p'); pos += 1; }
+            0x1E => if pos < 255 { buffer[pos] = b'a'; WRITER.lock().write_byte(b'a'); pos += 1; }
+            0x1F => if pos < 255 { buffer[pos] = b's'; WRITER.lock().write_byte(b's'); pos += 1; }
+            0x20 => if pos < 255 { buffer[pos] = b'd'; WRITER.lock().write_byte(b'd'); pos += 1; }
+            0x21 => if pos < 255 { buffer[pos] = b'f'; WRITER.lock().write_byte(b'f'); pos += 1; }
+            0x22 => if pos < 255 { buffer[pos] = b'g'; WRITER.lock().write_byte(b'g'); pos += 1; }
+            0x23 => if pos < 255 { buffer[pos] = b'h'; WRITER.lock().write_byte(b'h'); pos += 1; }
+            0x24 => if pos < 255 { buffer[pos] = b'j'; WRITER.lock().write_byte(b'j'); pos += 1; }
+            0x25 => if pos < 255 { buffer[pos] = b'k'; WRITER.lock().write_byte(b'k'); pos += 1; }
+            0x26 => if pos < 255 { buffer[pos] = b'l'; WRITER.lock().write_byte(b'l'); pos += 1; }
+            0x2C => if pos < 255 { buffer[pos] = b'z'; WRITER.lock().write_byte(b'z'); pos += 1; }
+            0x2D => if pos < 255 { buffer[pos] = b'x'; WRITER.lock().write_byte(b'x'); pos += 1; }
+            0x2E => if pos < 255 { buffer[pos] = b'c'; WRITER.lock().write_byte(b'c'); pos += 1; }
+            0x2F => if pos < 255 { buffer[pos] = b'v'; WRITER.lock().write_byte(b'v'); pos += 1; }
+            0x30 => if pos < 255 { buffer[pos] = b'b'; WRITER.lock().write_byte(b'b'); pos += 1; }
+            0x31 => if pos < 255 { buffer[pos] = b'n'; WRITER.lock().write_byte(b'n'); pos += 1; }
+            0x32 => if pos < 255 { buffer[pos] = b'm'; WRITER.lock().write_byte(b'm'); pos += 1; }
+            0x0C => if pos < 255 { buffer[pos] = b'-'; WRITER.lock().write_byte(b'-'); pos += 1; }
+            0x0D => if pos < 255 { buffer[pos] = b'='; WRITER.lock().write_byte(b'='); pos += 1; }
             _ => {}
+        }
+        
+        // Задержка для предотвращения дребезга
+        for _ in 0..50000 {
+            x86_64::instructions::nop();
         }
     }
     
@@ -267,7 +355,7 @@ impl fmt::Write for Writer {
 lazy_static! {
     pub static ref WRITER: Mutex<Writer> = Mutex::new(Writer {
         column_position: 0,
-        color_code: ColorCode::new(Color::Yellow, Color::Black),
+        color_code: ColorCode::new(Color::White, Color::Black),
         buffer: unsafe { &mut *(0xb8000 as *mut Buffer) },
     });
 }
