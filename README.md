@@ -13,4 +13,18 @@ ReeOS is a minimal hobby operating system kernel written in Rust. It features VG
 ## Building
 
 ```bash
-cargo build --targ
+cargo run
+```
+
+# a must for testing!
+Create a .cargo folder, create a config.toml file there, and write the following in it.
+```bash
+[unstable]
+json-target-spec = true
+build-std-features = ["compiler-builtins-mem"]
+build-std = ["core", "compiler_builtins"]
+[build]
+target = "kernel.json"
+[target.'cfg(target_os = "none")']
+runner = "bootimage runner"
+
