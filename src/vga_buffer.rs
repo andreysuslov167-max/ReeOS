@@ -113,56 +113,12 @@ pub fn wait_for_enter() {
     let mut port = Port::new(0x60);
     loop {
         let scancode: u8 = unsafe { port.read() };
-        if scancode == 0x1C {  // 0x1C = Enter key press
+        if scancode == 0x1C {  
             break;
         }
     }
 }
-fn scancode_to_ascii_with_shift(scancode: u8, shift: bool) -> Option<char> {
-    match scancode {
-        0x02 => if shift { Some('!') } else { Some('1') },
-        0x03 => if shift { Some('@') } else { Some('2') },
-        0x04 => if shift { Some('#') } else { Some('3') },
-        0x05 => if shift { Some('$') } else { Some('4') },
-        0x06 => if shift { Some('%') } else { Some('5') },
-        0x07 => if shift { Some('^') } else { Some('6') },
-        0x08 => if shift { Some('&') } else { Some('7') },
-        0x09 => if shift { Some('*') } else { Some('8') },
-        0x0A => if shift { Some('(') } else { Some('9') },
-        0x0B => if shift { Some(')') } else { Some('0') },
-        0x0C => if shift { Some('_') } else { Some('-') },
-        0x0D => if shift { Some('+') } else { Some('=') },
-        
-        // Буквы с поддержкой Shift
-        0x10 => if shift { Some('Q') } else { Some('q') },
-        0x11 => if shift { Some('W') } else { Some('w') },
-        0x12 => if shift { Some('E') } else { Some('e') },
-        0x13 => if shift { Some('R') } else { Some('r') },
-        0x14 => if shift { Some('T') } else { Some('t') },
-        0x15 => if shift { Some('Y') } else { Some('y') },
-        0x16 => if shift { Some('U') } else { Some('u') },
-        0x17 => if shift { Some('I') } else { Some('i') },
-        0x18 => if shift { Some('O') } else { Some('o') },
-        0x19 => if shift { Some('P') } else { Some('p') },
-        0x1E => if shift { Some('A') } else { Some('a') },
-        0x1F => if shift { Some('S') } else { Some('s') },
-        0x20 => if shift { Some('D') } else { Some('d') },
-        0x21 => if shift { Some('F') } else { Some('f') },
-        0x22 => if shift { Some('G') } else { Some('g') },
-        0x23 => if shift { Some('H') } else { Some('h') },
-        0x24 => if shift { Some('J') } else { Some('j') },
-        0x25 => if shift { Some('K') } else { Some('k') },
-        0x26 => if shift { Some('L') } else { Some('l') },
-        0x2C => if shift { Some('Z') } else { Some('z') },
-        0x2D => if shift { Some('X') } else { Some('x') },
-        0x2E => if shift { Some('C') } else { Some('c') },
-        0x2F => if shift { Some('V') } else { Some('v') },
-        0x30 => if shift { Some('B') } else { Some('b') },
-        0x31 => if shift { Some('N') } else { Some('n') },
-        0x32 => if shift { Some('M') } else { Some('m') },
-        _ => None,
-    }
-}
+
 fn scancode_to_ascii(scancode: u8) -> Option<char> {
     match scancode {
         0x02 => Some('1'), 0x03 => Some('2'), 0x04 => Some('3'),
@@ -177,7 +133,8 @@ fn scancode_to_ascii(scancode: u8) -> Option<char> {
         0x25 => Some('k'), 0x26 => Some('l'), 0x2C => Some('z'),
         0x2D => Some('x'), 0x2E => Some('c'), 0x2F => Some('v'),
         0x30 => Some('b'), 0x31 => Some('n'), 0x32 => Some('m'),
-        0x0C => Some('-'), 0x0D => Some('='),
+        0x0C => Some('-'), 0x0D => Some('='), 0x35 => Some('/'),
+        0x34 => Some('.'), 0x28 => Some('\''),
                 
 
         _ => None,
@@ -226,7 +183,7 @@ pub fn clear_keyboard_buffer() {
     let mut port: Port<u8> = Port::new(0x60);
     let mut status_port: Port<u8> = Port::new(0x64);
     
-    // Читаем ВСЕ данные из буфера клавиатуры
+  
     for _ in 0..100 {
         let status: u8 = unsafe { status_port.read() };
         if status & 1 != 0 {
@@ -246,36 +203,35 @@ pub fn read_line_with_echo() -> [u8; 256] {
     let mut buffer = [0u8; 256];
     let mut pos = 0;
     
-    // Сначала очищаем буфер клавиатуры
+   
     clear_keyboard_buffer();
     
     loop {
-        // Ждем, пока клавиша не будет нажата
+      
         let scancode: u8 = loop {
             let status: u8 = unsafe { Port::new(0x64).read() };
             if status & 1 != 0 {
                 let code = unsafe { port.read() };
-                // Игнорируем release коды
+                
                 if code & 0x80 == 0 {
                     break code;
                 }
             }
-            // Небольшая задержка чтобы не нагружать CPU
+           
             for _ in 0..1000 {
                 x86_64::instructions::nop();
             }
         };
         
         match scancode {
-            0x1C => { // Enter
+            0x1C => {
                 WRITER.lock().write_byte(b'\n');
                 break;
             }
-            0x0E => { // Backspace
+            0x0E => { 
                 if pos > 0 {
                     pos -= 1;
                     let mut writer = WRITER.lock();
-                    // Стираем символ с экрана
                     writer.write_byte(0x08);
                     writer.write_byte(b' ');
                     writer.write_byte(0x08);
@@ -288,7 +244,7 @@ pub fn read_line_with_echo() -> [u8; 256] {
                     pos += 1;
                 }
             }
-            // Цифры
+         
             0x02 => if pos < 255 { buffer[pos] = b'1'; WRITER.lock().write_byte(b'1'); pos += 1; }
             0x03 => if pos < 255 { buffer[pos] = b'2'; WRITER.lock().write_byte(b'2'); pos += 1; }
             0x04 => if pos < 255 { buffer[pos] = b'3'; WRITER.lock().write_byte(b'3'); pos += 1; }
@@ -298,8 +254,7 @@ pub fn read_line_with_echo() -> [u8; 256] {
             0x08 => if pos < 255 { buffer[pos] = b'7'; WRITER.lock().write_byte(b'7'); pos += 1; }
             0x09 => if pos < 255 { buffer[pos] = b'8'; WRITER.lock().write_byte(b'8'); pos += 1; }
             0x0A => if pos < 255 { buffer[pos] = b'9'; WRITER.lock().write_byte(b'9'); pos += 1; }
-            0x0B => if pos < 255 { buffer[pos] = b'0'; WRITER.lock().write_byte(b'0'); pos += 1; }
-            // Буквы
+            0x0B => if pos < 255 { buffer[pos] = b'0'; WRITER.lock().write_byte(b'0'); pos += 1; }            
             0x10 => if pos < 255 { buffer[pos] = b'q'; WRITER.lock().write_byte(b'q'); pos += 1; }
             0x11 => if pos < 255 { buffer[pos] = b'w'; WRITER.lock().write_byte(b'w'); pos += 1; }
             0x12 => if pos < 255 { buffer[pos] = b'e'; WRITER.lock().write_byte(b'e'); pos += 1; }
@@ -328,10 +283,13 @@ pub fn read_line_with_echo() -> [u8; 256] {
             0x32 => if pos < 255 { buffer[pos] = b'm'; WRITER.lock().write_byte(b'm'); pos += 1; }
             0x0C => if pos < 255 { buffer[pos] = b'-'; WRITER.lock().write_byte(b'-'); pos += 1; }
             0x0D => if pos < 255 { buffer[pos] = b'='; WRITER.lock().write_byte(b'='); pos += 1; }
+            0x35 => { if pos < 255 { buffer[pos] = b'/'; WRITER.lock().write_byte(b'/'); pos += 1; } }
+            0x34 => { if pos < 255 { buffer[pos] = b'.'; WRITER.lock().write_byte(b'.'); pos += 1; } }
+            0x28 => { if pos < 255 { buffer[pos] = b'\''; WRITER.lock().write_byte(b'\''); pos += 1; } }
             _ => {}
         }
         
-        // Задержка для предотвращения дребезга
+      
         for _ in 0..50000 {
             x86_64::instructions::nop();
         }
