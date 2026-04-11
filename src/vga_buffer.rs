@@ -8,6 +8,7 @@ use x86_64::instructions::port::Port;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Color {
+    
     Black = 0,
     Blue = 1,
     Green = 2,
@@ -24,6 +25,47 @@ pub enum Color {
     Pink = 13,
     Yellow = 14,
     White = 15,
+}
+pub fn set_color(fg: Color, bg: Color) {
+    WRITER.lock().color_code = ColorCode::new(fg, bg);
+}
+pub fn get_color() -> (Color, Color) {
+    let writer = WRITER.lock();
+    let fg = match writer.color_code.0 & 0x0F {
+        0 => Color::Black,
+        1 => Color::Blue,
+        2 => Color::Green,
+        3 => Color::Cyan,
+        4 => Color::Red,
+        5 => Color::Magenta,
+        6 => Color::Brown,
+        7 => Color::LightGray,
+        8 => Color::DarkGray,
+        9 => Color::LightBlue,
+        10 => Color::LightGreen,
+        11 => Color::LightCyan,
+        12 => Color::LightRed,
+        13 => Color::Pink,
+        14 => Color::Yellow,
+        15 => Color::White,
+        _ => Color::White,
+    };
+    let bg = match (writer.color_code.0 >> 4) & 0x0F {
+        0 => Color::Black,
+        1 => Color::Blue,
+        2 => Color::Green,
+        3 => Color::Cyan,
+        4 => Color::Red,
+        5 => Color::Magenta,
+        6 => Color::Brown,
+        7 => Color::LightGray,
+        _ => Color::Black,
+    };
+    (fg, bg)
+}
+
+pub fn reset_color() {
+    WRITER.lock().color_code = ColorCode::new(Color::White, Color::Black);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
